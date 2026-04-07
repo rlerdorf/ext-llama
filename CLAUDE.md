@@ -82,3 +82,7 @@ Available at `/tmp/`:
 - `qwen2.5-3b-instruct-q4_k_m.gguf` — Qwen2.5 3B Q4_K_M (2GB, good quality)
 - `smallthinker-lora-f16.gguf` — SmallThinker reasoning LoRA for Qwen2.5-3B (533MB)
 - `qwen-abliterated-lora.gguf` — Abliterated LoRA for Qwen2.5-3B (532MB)
+- `qwen-rag-lora-f16.gguf` — RAG DPO LoRA for Qwen2.5-3B (15MB, converted from safetensors)
+
+Embedding model in `examples/php-doc-rag/models/`:
+- `nomic-embed-text-v1.5-q8_0.gguf` — nomic-bert 137M Q8_0 (139MB, encoder-only)

@@ -496,9 +496,13 @@ PHP_METHOD(Llama_Context, __construct)
         zval *val;
         if ((val = zend_hash_str_find(Z_ARRVAL_P(params), "n_ctx", sizeof("n_ctx") - 1)) != NULL) {
             ctx_params.n_ctx = (uint32_t)zval_get_long(val);
+            /* Default n_batch to n_ctx so full prompts can be decoded in one call */
+            ctx_params.n_batch = ctx_params.n_ctx;
+            ctx_params.n_ubatch = ctx_params.n_ctx;
         }
         if ((val = zend_hash_str_find(Z_ARRVAL_P(params), "n_batch", sizeof("n_batch") - 1)) != NULL) {
             ctx_params.n_batch = (uint32_t)zval_get_long(val);
+            ctx_params.n_ubatch = ctx_params.n_batch;
         }
         if ((val = zend_hash_str_find(Z_ARRVAL_P(params), "n_threads", sizeof("n_threads") - 1)) != NULL) {
             ctx_params.n_threads = (int32_t)zval_get_long(val);
@@ -872,24 +876,35 @@ PHP_METHOD(Llama_Context, embed)
     llama_token *tokens = emalloc(sizeof(llama_token) * n_tokens);
     llama_tokenize(intern->vocab, text, (int32_t)text_len, tokens, n_tokens, true, false);
 
-    /* Clear KV cache */
-    llama_memory_clear(llama_get_memory(intern->ctx), false);
+    /* Clear KV cache if model has one */
+    llama_memory_t mem = llama_get_memory(intern->ctx);
+    if (mem) {
+        llama_memory_clear(mem, false);
+    }
 
-    /* Decode */
+    /* Use encode for encoder models (BERT, nomic, etc.), decode for decoders */
     struct llama_batch batch = llama_batch_get_one(tokens, n_tokens);
-    if (llama_decode(intern->ctx, batch) != 0) {
+    int32_t ret;
+    if (llama_model_has_encoder(intern->model) && !llama_model_has_decoder(intern->model)) {
+        ret = llama_encode(intern->ctx, batch);
+    } else {
+        ret = llama_decode(intern->ctx, batch);
+    }
+    if (ret != 0) {
         efree(tokens);
-        zend_throw_exception(llama_ce_exception, "Failed to decode for embeddings", 0);
+        zend_throw_exception(llama_ce_exception, "Failed to process input for embeddings", 0);
         RETURN_THROWS();
     }
 
     efree(tokens);
 
-    /* Get embeddings */
+    /* Get embeddings — try sequence pooling first, then positional */
     float *embd = llama_get_embeddings_seq(intern->ctx, 0);
     if (!embd) {
-        /* Try ith approach */
         embd = llama_get_embeddings_ith(intern->ctx, -1);
+    }
+    if (!embd) {
+        embd = llama_get_embeddings_ith(intern->ctx, 0);
     }
 
     if (!embd) {
@@ -1155,14 +1170,25 @@ PHP_METHOD(Llama_Context, stream)
         }
     }
 
+    /* Check for parse_special option (needed when prompt contains chat template tokens) */
+    bool add_special = true;
+    bool parse_special = false;
+    if (options) {
+        zval *val;
+        if ((val = zend_hash_str_find(Z_ARRVAL_P(options), "parse_special", sizeof("parse_special") - 1)) != NULL) {
+            parse_special = zend_is_true(val);
+            if (parse_special) add_special = false; /* template already has BOS */
+        }
+    }
+
     /* Tokenize prompt */
-    int32_t n_prompt = llama_tokenize(ctx_intern->vocab, prompt, (int32_t)prompt_len, NULL, 0, true, false);
+    int32_t n_prompt = llama_tokenize(ctx_intern->vocab, prompt, (int32_t)prompt_len, NULL, 0, add_special, parse_special);
     if (n_prompt < 0) {
         n_prompt = -n_prompt;
     }
 
     llama_token *prompt_tokens = emalloc(sizeof(llama_token) * n_prompt);
-    llama_tokenize(ctx_intern->vocab, prompt, (int32_t)prompt_len, prompt_tokens, n_prompt, true, false);
+    llama_tokenize(ctx_intern->vocab, prompt, (int32_t)prompt_len, prompt_tokens, n_prompt, add_special, parse_special);
 
     /* Clear KV cache */
     llama_memory_clear(llama_get_memory(ctx_intern->ctx), false);
