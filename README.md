@@ -35,13 +35,13 @@ ext-llama is a better fit for **embedded / low-concurrency setups** where simpli
 
 ## Installation
 
-Build llama.cpp:
+Build and install llama.cpp:
 
 ```bash
 git clone https://github.com/ggml-org/llama.cpp
 cd llama.cpp && mkdir build && cd build
 cmake .. -DBUILD_SHARED_LIBS=ON
-make -j$(nproc)
+make -j$(nproc) llama ggml common
 sudo make install  # installs libllama.so, headers
 ```
 
@@ -58,10 +58,41 @@ make
 sudo make install
 ```
 
+Or via PIE:
+
+```bash
+pie install rlerdorf/ext-llama --with-llama=/path/to/llama-cpp
+```
+
 Add to your `php.ini`:
 
 ```ini
 extension=llama
+```
+
+### JSON schema support
+
+The `json_schema` option for constrained generation requires the llama.cpp `common` library and its `nlohmann/json` dependency. GBNF grammar support works without it.
+
+When you point `--with-llama` at the llama.cpp source tree (not a system install prefix), the build system automatically finds `libcommon.a`, the `json-schema-to-grammar.h` header, and the vendored `nlohmann/json.hpp`. This is the recommended approach:
+
+```bash
+# Build llama.cpp (make sure to build the common target)
+cd llama.cpp/build
+cmake .. -DBUILD_SHARED_LIBS=ON
+make -j$(nproc) llama ggml common
+
+# Point the extension at the source tree
+cd ext-llama
+phpize
+./configure --with-llama=/path/to/llama.cpp/source
+make
+```
+
+If you only have llama.cpp installed system-wide (via `make install`), the `json_schema` option will not be available because `libcommon.a` and the nlohmann headers are not part of the system install. You can still use GBNF grammars directly via the `grammar` option. The configure step will tell you:
+
+```
+checking for llama.cpp common library (json-schema-to-grammar)... no - json_schema option will not be available
 ```
 
 ## Quick Start
