@@ -4,7 +4,7 @@
 #include "php.h"
 #include "llama.h"
 
-#define PHP_LLAMA_VERSION "0.1.0"
+#define PHP_LLAMA_VERSION "0.1.1"
 
 extern zend_module_entry llama_module_entry;
 #define phpext_llama_ptr &llama_module_entry
