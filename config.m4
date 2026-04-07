@@ -6,15 +6,23 @@ PHP_ARG_WITH([llama],
     [Include llama.cpp support])])
 
 if test "$PHP_LLAMA" != "no"; then
-  dnl Check for llama.h
-  SEARCH_PATH="/usr/local /usr /home/rasmus/src/llama-cpp"
-
-  SEARCH_FOR="include/llama.h"
+  dnl Find llama.h - check both source tree layout (include/llama.h)
+  dnl and system-installed layout (llama.h directly in include path)
   AC_MSG_CHECKING([for llama.cpp headers])
-  for i in $PHP_LLAMA $SEARCH_PATH; do
-    if test -r $i/$SEARCH_FOR; then
+  LLAMA_DIR=""
+  LLAMA_INCDIR=""
+
+  SEARCH_PATH="/usr/local /usr"
+  if test "$PHP_LLAMA" != "yes" && test -n "$PHP_LLAMA"; then
+    SEARCH_PATH="$PHP_LLAMA $SEARCH_PATH"
+  fi
+
+  for i in $SEARCH_PATH; do
+    if test -r "$i/include/llama.h"; then
+      dnl Source tree or prefix-style install
       LLAMA_DIR=$i
-      AC_MSG_RESULT(found in $i)
+      LLAMA_INCDIR="$i/include"
+      AC_MSG_RESULT(found in $i/include)
       break
     fi
   done
@@ -24,15 +32,19 @@ if test "$PHP_LLAMA" != "no"; then
     AC_MSG_ERROR([Please install llama.cpp or specify the path with --with-llama=DIR])
   fi
 
-  PHP_ADD_INCLUDE($LLAMA_DIR/include)
-  PHP_ADD_INCLUDE($LLAMA_DIR/ggml/include)
-  PHP_ADD_INCLUDE($LLAMA_DIR/common)
+  PHP_ADD_INCLUDE($LLAMA_INCDIR)
 
-  dnl Check for libllama
-  LIBLLAMA_SEARCH="$LLAMA_DIR/build/bin $LLAMA_DIR/lib $LLAMA_DIR/build/src"
-  for dir in $LIBLLAMA_SEARCH; do
-    if test -f "$dir/libllama.so" || test -f "$dir/libllama.so.0"; then
+  dnl ggml headers may be in a separate directory (source tree layout)
+  if test -d "$LLAMA_DIR/ggml/include"; then
+    PHP_ADD_INCLUDE($LLAMA_DIR/ggml/include)
+  fi
+
+  dnl Find libllama
+  LIBLLAMA_FOUND=no
+  for dir in "$LLAMA_DIR/build/bin" "$LLAMA_DIR/lib" "$LLAMA_DIR/lib64" "$LLAMA_DIR/build/src"; do
+    if test -f "$dir/libllama.so" || test -f "$dir/libllama.so.0" || test -f "$dir/libllama.dylib"; then
       PHP_ADD_LIBPATH($dir, LLAMA_SHARED_LIBADD)
+      LIBLLAMA_FOUND=yes
       break
     fi
   done
@@ -41,20 +53,43 @@ if test "$PHP_LLAMA" != "no"; then
   PHP_ADD_LIBRARY(stdc++, 1, LLAMA_SHARED_LIBADD)
   PHP_SUBST(LLAMA_SHARED_LIBADD)
 
-  dnl Find nlohmann/json include path
-  for dir in "$LLAMA_DIR/vendor" "$LLAMA_DIR/common" "$LLAMA_DIR/build/_deps/json-src/include" "/usr/include" "/usr/local/include"; do
-    if test -f "$dir/nlohmann/json.hpp"; then
+  dnl Check for json-schema-to-grammar support (optional, requires common library)
+  LLAMA_SOURCES="llama.c sampler_safe.cpp"
+  HAVE_JSON_SCHEMA=no
+
+  AC_MSG_CHECKING([for llama.cpp common library (json-schema-to-grammar)])
+  for dir in "$LLAMA_DIR/common" "$LLAMA_INCDIR"; do
+    if test -f "$dir/json-schema-to-grammar.h"; then
       PHP_ADD_INCLUDE($dir)
+
+      dnl Find nlohmann/json (required by json-schema-to-grammar)
+      for jdir in "$LLAMA_DIR/vendor" "$LLAMA_DIR/common" "$LLAMA_DIR/build/_deps/json-src/include" "/usr/include" "/usr/local/include"; do
+        if test -f "$jdir/nlohmann/json.hpp"; then
+          PHP_ADD_INCLUDE($jdir)
+          break
+        fi
+      done
+
+      dnl Find libcommon.a
+      for ldir in "$LLAMA_DIR/build/common" "$LLAMA_DIR/lib" "$LLAMA_DIR/lib64"; do
+        if test -f "$ldir/libcommon.a"; then
+          LLAMA_SHARED_LIBADD="$LLAMA_SHARED_LIBADD $ldir/libcommon.a"
+          LLAMA_SOURCES="$LLAMA_SOURCES json_schema_shim.cpp"
+          HAVE_JSON_SCHEMA=yes
+          break
+        fi
+      done
       break
     fi
   done
 
-  dnl Static link libcommon for json-schema-to-grammar
-  LLAMA_COMMON_LIB="$LLAMA_DIR/build/common/libcommon.a"
-  if test -f "$LLAMA_COMMON_LIB"; then
-    LLAMA_SHARED_LIBADD="$LLAMA_SHARED_LIBADD $LLAMA_COMMON_LIB"
+  if test "$HAVE_JSON_SCHEMA" = "yes"; then
+    AC_MSG_RESULT(yes)
+    AC_DEFINE(HAVE_JSON_SCHEMA, 1, [Whether json-schema-to-grammar is available])
+  else
+    AC_MSG_RESULT(no - json_schema option will not be available)
   fi
 
   PHP_REQUIRE_CXX()
-  PHP_NEW_EXTENSION(llama, llama.c json_schema_shim.cpp, $ext_shared,, -DLLAMA_SHARED)
+  PHP_NEW_EXTENSION(llama, $LLAMA_SOURCES, $ext_shared,, -DLLAMA_SHARED)
 fi

@@ -10,8 +10,10 @@
 #include "zend_smart_str.h"
 #include "php_llama.h"
 
-/* From json_schema_shim.cpp */
+/* From json_schema_shim.cpp (only available when built with libcommon) */
+#ifdef HAVE_JSON_SCHEMA
 extern char *llama_json_schema_to_grammar(const char *json_schema, char **err_out);
+#endif
 extern int32_t llama_sampler_sample_safe(struct llama_sampler *smpl, struct llama_context *ctx, int32_t idx, struct llama_sampler *grammar);
 
 /* Class entries */
@@ -587,6 +589,7 @@ static struct llama_sampler *build_sampler_chain(zval *options, const struct lla
         char *grammar_str = NULL;
         bool grammar_needs_free = false;
 
+#ifdef HAVE_JSON_SCHEMA
         if ((val = zend_hash_str_find(Z_ARRVAL_P(options), "json_schema", sizeof("json_schema") - 1)) != NULL) {
             zend_string *schema_zs = zval_get_string(val);
             char *err = NULL;
@@ -600,7 +603,9 @@ static struct llama_sampler *build_sampler_chain(zval *options, const struct lla
                 return NULL;
             }
             grammar_needs_free = true;
-        } else if ((val = zend_hash_str_find(Z_ARRVAL_P(options), "grammar", sizeof("grammar") - 1)) != NULL) {
+        } else
+#endif
+        if ((val = zend_hash_str_find(Z_ARRVAL_P(options), "grammar", sizeof("grammar") - 1)) != NULL) {
             convert_to_string(val);
             grammar_str = Z_STRVAL_P(val);
         }
