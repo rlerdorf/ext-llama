@@ -1,21 +1,21 @@
 # ext-llama
 
-A PHP extension for running GGUF large language models directly in PHP using [llama.cpp](https://github.com/ggml-org/llama.cpp). No HTTP servers, no exec(), no Python — just load a model and generate text from your PHP script.
+A PHP extension for running GGUF large language models directly in PHP using [llama.cpp](https://github.com/ggml-org/llama.cpp). No HTTP servers, no exec(), no Python. Just load a model and generate text from your PHP script.
 
 ## Why not just use llama-server?
 
 For larger models and high-concurrency workloads, you probably should. llama.cpp ships with [llama-server](https://github.com/ggml-org/llama.cpp/tree/master/tools/server), an HTTP server that exposes an OpenAI-compatible API. You can talk to it from PHP with any HTTP client. llama-server is the better choice when:
 
-- **High concurrency** — llama-server holds a single copy of the model and handles parallel requests via slots. With ext-llama, each PHP-FPM worker creates its own inference context. Model *weights* are shared across workers via mmap (no duplication in system RAM), but GPU (CUDA/Metal) memory is per-process. If you're offloading a 7B model to GPU and running 4 FPM workers, that's 4x the VRAM. A dedicated llama-server avoids this entirely.
-- **Large models** — For 13B+ models on GPU, the single-process architecture of llama-server is more memory-efficient.
-- **Multi-language / multi-app** — If other services besides PHP need the same model, a shared server makes more sense than loading it in every process.
+- **High concurrency.** llama-server holds a single copy of the model and handles parallel requests via slots. With ext-llama, each PHP-FPM worker creates its own inference context. Model *weights* are shared across workers via mmap (no duplication in system RAM), but GPU (CUDA/Metal) memory is per-process. If you're offloading a 7B model to GPU and running 4 FPM workers, that's 4x the VRAM. A dedicated llama-server avoids this entirely.
+- **Large models.** For 13B+ models on GPU, the single-process architecture of llama-server is more memory-efficient.
+- **Multi-language / multi-app.** If other services besides PHP need the same model, a shared server makes more sense than loading it in every process.
 
 ext-llama is a better fit for **embedded / low-concurrency setups** where simplicity matters:
 
-- Small to medium models (1-7B) running on CPU, or GPU with a single FPM worker
+- Small to medium models (1-7B) running on CPU, or on GPU with a single or very few FPM workers where the per-worker VRAM cost is acceptable
 - Dedicated appliances, IoT, edge servers, or internal tools where you want one less daemon to manage
 - Use cases like RAG, structured extraction, or chat where a single PHP process handles the request end-to-end
-- LoRA hot-swapping per request — switch "personalities" in sub-millisecond time without touching a server config
+- LoRA hot-swapping per request, allowing you to switch "personalities" in sub-millisecond time without touching a server config
 
 | | ext-llama | llama-server + HTTP client |
 |---|---|---|
@@ -45,7 +45,7 @@ make -j$(nproc)
 sudo make install  # installs libllama.so, headers
 ```
 
-For CUDA (NVIDIA GPU) support, add `-DGGML_CUDA=ON` to the cmake line. Other backends like Vulkan (`-DGGML_VULKAN=ON`) and Metal (macOS, enabled by default) work the same way. The PHP extension does not need to be recompiled when switching backends — only libllama does.
+For CUDA (NVIDIA GPU) support, add `-DGGML_CUDA=ON` to the cmake line. Other backends like Vulkan (`-DGGML_VULKAN=ON`) and Metal (macOS, enabled by default) work the same way. The PHP extension does not need to be recompiled when switching backends. Only libllama does.
 
 Build the extension:
 
@@ -93,7 +93,7 @@ $model->nLayer();            // layer count
 $model->chatTemplate();      // built-in Jinja chat template, or null
 $model->meta('general.name');// read GGUF metadata by key
 
-$model->tokenize("Hello");       // [1, 15043] — token IDs
+$model->tokenize("Hello");       // [1, 15043]
 $model->detokenize([1, 15043]);  // " Hello"
 ```
 
