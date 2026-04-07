@@ -35,64 +35,51 @@ ext-llama is a better fit for **embedded / low-concurrency setups** where simpli
 
 ## Installation
 
-Build and install llama.cpp:
+### 1. Build llama.cpp
 
 ```bash
 git clone https://github.com/ggml-org/llama.cpp
 cd llama.cpp && mkdir build && cd build
 cmake .. -DBUILD_SHARED_LIBS=ON
 make -j$(nproc) llama ggml common
-sudo make install  # installs libllama.so, headers
+sudo make install  # installs libllama.so and headers to /usr/local
 ```
 
 For CUDA (NVIDIA GPU) support, add `-DGGML_CUDA=ON` to the cmake line. Other backends like Vulkan (`-DGGML_VULKAN=ON`) and Metal (macOS, enabled by default) work the same way. The PHP extension does not need to be recompiled when switching backends. Only libllama does.
 
-Build the extension:
+### 2. Build the extension
+
+Point `--with-llama` at the **llama.cpp source tree** (not the install prefix). This is important because it gives the build system access to `libcommon.a` and the vendored `nlohmann/json` headers, which are needed for JSON schema constrained generation. These files are not installed by `make install`.
+
+Via PIE:
+
+```bash
+pie install rlerdorf/ext-llama --with-llama=/path/to/llama.cpp
+```
+
+Or manually:
 
 ```bash
 git clone https://github.com/rlerdorf/ext-llama
 cd ext-llama
 phpize
-./configure --with-llama=/path/to/llama-cpp
+./configure --with-llama=/path/to/llama.cpp
 make
 sudo make install
 ```
 
-Or via PIE:
+If you point `--with-llama` at a system prefix like `/usr/local` instead of the source tree, the extension will still build and work, but the `json_schema` option will not be available. GBNF grammars (the `grammar` option) always work regardless. The configure output will tell you which features are enabled:
 
-```bash
-pie install rlerdorf/ext-llama --with-llama=/path/to/llama-cpp
 ```
+checking for llama.cpp common library (json-schema-to-grammar)... yes
+```
+
+### 3. Enable the extension
 
 Add to your `php.ini`:
 
 ```ini
 extension=llama
-```
-
-### JSON schema support
-
-The `json_schema` option for constrained generation requires the llama.cpp `common` library and its `nlohmann/json` dependency. GBNF grammar support works without it.
-
-When you point `--with-llama` at the llama.cpp source tree (not a system install prefix), the build system automatically finds `libcommon.a`, the `json-schema-to-grammar.h` header, and the vendored `nlohmann/json.hpp`. This is the recommended approach:
-
-```bash
-# Build llama.cpp (make sure to build the common target)
-cd llama.cpp/build
-cmake .. -DBUILD_SHARED_LIBS=ON
-make -j$(nproc) llama ggml common
-
-# Point the extension at the source tree
-cd ext-llama
-phpize
-./configure --with-llama=/path/to/llama.cpp/source
-make
-```
-
-If you only have llama.cpp installed system-wide (via `make install`), the `json_schema` option will not be available because `libcommon.a` and the nlohmann headers are not part of the system install. You can still use GBNF grammars directly via the `grammar` option. The configure step will tell you:
-
-```
-checking for llama.cpp common library (json-schema-to-grammar)... no - json_schema option will not be available
 ```
 
 ## Quick Start
