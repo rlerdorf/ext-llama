@@ -272,6 +272,10 @@ function sendSSE(string $event, string $data): void {
   }
   .bubble pre code { background: none; padding: 0; }
   .bubble pre code.hljs { background: none; padding: 0; }
+  .bubble h3, .bubble h4 { color: #9b8afb; margin: 0.75rem 0 0.25rem 0; font-size: 1rem; }
+  .bubble h3 { font-size: 1.05rem; }
+  .bubble li { margin-left: 1.25rem; margin-bottom: 0.2rem; }
+  .bubble strong { color: #ccc; }
 
   .cursor { animation: blink 1s infinite; }
   @keyframes blink { 50% { opacity: 0; } }
@@ -502,12 +506,35 @@ function esc(s) {
 }
 
 function formatMarkdown(text) {
-  return esc(text)
-    .replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
-      const cls = lang ? `language-${lang}` : 'language-php';
-      return `<pre><code class="${cls}">${code}</code></pre>`;
-    })
-    .replace(/`([^`]+)`/g, '<code>$1</code>');
+  // Escape HTML first
+  let html = esc(text);
+
+  // Code blocks (before other rules so content inside is protected)
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
+    const cls = lang ? `language-${lang}` : 'language-php';
+    return `\x00PRE${cls}\x00${code}\x00/PRE\x00`;
+  });
+
+  // Inline code
+  html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+
+  // Headings
+  html = html.replace(/^#### (.+)$/gm, '<strong>$1</strong>');
+  html = html.replace(/^### (.+)$/gm, '<h4>$1</h4>');
+  html = html.replace(/^## (.+)$/gm, '<h3>$1</h3>');
+
+  // Bold
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
+  // List items
+  html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
+  html = html.replace(/^(\d+)\. (.+)$/gm, '<li>$2</li>');
+
+  // Restore code blocks
+  html = html.replace(/\x00PRE([^\x00]*)\x00([\s\S]*?)\x00\/PRE\x00/g,
+    '<pre><code class="$1">$2</code></pre>');
+
+  return html;
 }
 
 function highlightAll(el) {

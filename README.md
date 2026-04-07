@@ -4,25 +4,29 @@ A PHP extension for running GGUF large language models directly in PHP using [ll
 
 ## Why not just use llama-server?
 
-llama.cpp ships with [llama-server](https://github.com/ggml-org/llama.cpp/tree/master/tools/server), an HTTP server that exposes an OpenAI-compatible API. You can talk to it from PHP with any HTTP client. That's a perfectly good approach and the right choice if:
+For larger models and high-concurrency workloads, you probably should. llama.cpp ships with [llama-server](https://github.com/ggml-org/llama.cpp/tree/master/tools/server), an HTTP server that exposes an OpenAI-compatible API. You can talk to it from PHP with any HTTP client. llama-server is the better choice when:
 
-- You want to share one model across multiple applications or languages
-- You already have infrastructure for managing sidecar services
-- You need the server's built-in features (parallel slots, API key auth, metrics)
+- **High concurrency** — llama-server holds a single copy of the model and handles parallel requests via slots. With ext-llama, each PHP-FPM worker creates its own inference context. Model *weights* are shared across workers via mmap (no duplication in system RAM), but GPU (CUDA/Metal) memory is per-process. If you're offloading a 7B model to GPU and running 4 FPM workers, that's 4x the VRAM. A dedicated llama-server avoids this entirely.
+- **Large models** — For 13B+ models on GPU, the single-process architecture of llama-server is more memory-efficient.
+- **Multi-language / multi-app** — If other services besides PHP need the same model, a shared server makes more sense than loading it in every process.
 
-This extension takes a different approach: it links directly against `libllama` and runs inference **inside the PHP process**. The tradeoffs vs. llama-server:
+ext-llama is a better fit for **embedded / low-concurrency setups** where simplicity matters:
+
+- Small to medium models (1-7B) running on CPU, or GPU with a single FPM worker
+- Dedicated appliances, IoT, edge servers, or internal tools where you want one less daemon to manage
+- Use cases like RAG, structured extraction, or chat where a single PHP process handles the request end-to-end
+- LoRA hot-swapping per request — switch "personalities" in sub-millisecond time without touching a server config
 
 | | ext-llama | llama-server + HTTP client |
 |---|---|---|
 | Moving parts | Just PHP | PHP + separate server process |
 | Deployment | `extension=llama` in php.ini | Manage a sidecar daemon |
 | Latency | Direct C calls | HTTP round-trip (~1ms loopback) |
-| Model memory | mmap shared across PHP-FPM workers | Dedicated server process |
-| LoRA hot-swap | Sub-millisecond, per-request | Requires server restart or API call |
+| Model memory (CPU) | mmap shared across workers | Single process |
+| Model memory (GPU) | Per-worker VRAM allocation | Single VRAM allocation |
+| LoRA hot-swap | Sub-millisecond, per-request | Server restart or API call |
 | Streaming | Native PHP `Iterator` | SSE parsing |
-| Grammar/JSON schema | Built-in | Built-in (server supports it too) |
-
-In short: if you want fewer moving parts and tighter integration, use the extension. If you want a standalone inference service, use llama-server.
+| Concurrency | Limited by FPM workers | Built-in parallel slots |
 
 ## Requirements
 
