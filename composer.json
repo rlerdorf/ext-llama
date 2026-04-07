@@ -1,0 +1,24 @@
+{
+    "name": "rlerdorf/ext-llama",
+    "type": "php-ext",
+    "description": "PHP extension for running GGUF models via llama.cpp",
+    "license": "PHP-3.01",
+    "keywords": ["llm", "llama", "gguf", "inference", "ai", "machine-learning", "lora", "embeddings"],
+    "homepage": "https://github.com/rlerdorf/ext-llama",
+    "require": {
+        "php": ">=8.4"
+    },
+    "php-ext": {
+        "extension-name": "llama",
+        "configure-options": [
+            {
+                "name": "with-llama",
+                "description": "Path to llama.cpp source or install directory",
+                "needs-value": true
+            }
+        ],
+        "support-nts": true,
+        "support-zts": true,
+        "os-families": ["linux", "darwin", "bsd"]
+    }
+}
